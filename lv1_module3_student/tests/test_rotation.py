@@ -49,8 +49,11 @@ def rng():
 @pytest.mark.parametrize("maker", MAKERS)
 @pytest.mark.parametrize("theta", ANGLES)
 def test_columns_are_orthonormal(maker, theta):
-    # TODO: 각 열의 길이가 1 인지, 서로 다른 두 열의 내적이 0 인지 검사
-    raise NotImplementedError("test_columns_are_orthonormal 을 작성하세요")
+    R = maker(theta)
+    # 1. 열벡터의 내적이 0인지 확인
+    dot_products = R.T @ R
+    identity = np.eye(R.shape[0])
+    assert np.allclose(dot_products, identity), f"열벡터가 직교하지 않음: {dot_products}"
 
 
 # --- 2. 행렬식이 1인가 --------------------------------------------------------
@@ -58,8 +61,9 @@ def test_columns_are_orthonormal(maker, theta):
 @pytest.mark.parametrize("maker", MAKERS)
 @pytest.mark.parametrize("theta", ANGLES)
 def test_determinant_is_one(maker, theta):
-    # TODO: det(R) == 1 인지 검사
-    raise NotImplementedError("test_determinant_is_one 을 작성하세요")
+    R = maker(theta)
+    det_R = np.linalg.det(R)  # 검산용
+    assert np.isclose(det_R, 1.0), f"행렬식이 1이 아님: det(R)={det_R}"
 
 
 # --- 3. 역행렬 == 전치 --------------------------------------------------------
@@ -67,23 +71,57 @@ def test_determinant_is_one(maker, theta):
 @pytest.mark.parametrize("maker", MAKERS)
 @pytest.mark.parametrize("theta", ANGLES)
 def test_inverse_equals_transpose(maker, theta):
-    # TODO: inv(R) == R.T 이고 R.T @ R == I 인지 검사
-    raise NotImplementedError("test_inverse_equals_transpose 를 작성하세요")
+    R = maker(theta)
+    assert np.allclose(np.linalg.inv(R), R.T), "역행렬이 전치와 일치하지 않습니다"
 
 
 # --- 4. 재직교화 결과가 직교행렬인가 -----------------------------------------
 
 def test_gram_schmidt_restores_orthogonality(rng):
-    # TODO: 회전행렬에 작은 노이즈를 섞어 직교성을 깨뜨린 뒤,
-    #       gram_schmidt 로 복구하면 직교성 오차가 기계정밀도 수준으로 줄고
-    #       det 가 1 이며 is_rotation 이 True 인지 검사
-    raise NotImplementedError("test_gram_schmidt_restores_orthogonality 를 작성하세요")
+    """Gram-Schmidt 재직교화가 직교행렬을 복원하는지 확인."""
+    # 1. 임의의 직교행렬 R 생성
+    axis = rng.normal(size=3)
+    axis /= np.linalg.norm(axis)  # 검산용
+    theta = rng.uniform(-np.pi, np.pi)
+    R = rodrigues(axis, theta)
 
+    # 2. R에 작은 잡음을 더해 직교성을 깨뜨린다
+    noise = rng.normal(scale=1e-3, size=R.shape)
+    R_noisy = R + noise
 
+    # 3. Gram-Schmidt 재직교화 수행
+    R_orthogonalized = gram_schmidt(R_noisy)
+
+    # 4. 재직교화 결과가 직교행렬인지 확인
+    error = orthogonality_error(R_orthogonalized)
+    assert error < 1e-6, f"재직교화 후 직교성 오차가 너무 큼: {error}"
+    
 # --- 여기부터는 추가 테스트 (권장) -------------------------------------------
-#
-# 예) def test_reflection_is_not_a_rotation():
-#         """det = -1 인 반사 행렬은 직교여도 회전이 아니다."""
-#
-# 예) def test_rodrigues_matches_rot_z(theta): ...
-# 예) def test_axis_angle_roundtrip(rng): ...
+
+def test_reflection_is_not_a_rotation():
+    """det = -1 인 반사 행렬은 직교여도 회전이 아니다."""
+    R = np.diag([1, 1, -1])
+    assert is_rotation(R) is False, "반사 행렬은 회전이 아니다"
+
+
+@pytest.mark.parametrize("theta", ANGLES)
+def test_rodrigues_matches_rot_z(theta):
+    """Rodrigues 공식이 rot_z 와 일치하는지 확인."""
+    R1 = rodrigues([0, 0, 1], theta)
+    R2 = rot_z(theta)
+    assert np.allclose(R1, R2), "Rodrigues 공식이 rot_z 와 일치하지 않는다"
+
+
+def test_axis_angle_roundtrip(rng):
+    """축·각 -> 회전행렬 -> 축·각 왕복이 일치하는지 확인."""
+    axis = rng.normal(size=3)
+    axis /= np.linalg.norm(axis)  # 검산용
+    theta = rng.uniform(-np.pi, np.pi)
+    R = rodrigues(axis, theta)
+    axis2, theta2 = axis_angle_from_matrix(R)
+    assert np.allclose(axis, axis2) or np.allclose(axis, -axis2), "축이 일치하지 않는다"
+    assert np.isclose(theta, theta2), "각도가 일치하지 않는다"
+
+
+
+

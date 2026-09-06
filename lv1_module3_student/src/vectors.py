@@ -16,7 +16,9 @@ __all__ = [
     "plane_normal",
     "row_echelon",
     "rank",
-    "det"
+    "det",
+    "gauss_eliminate"
+    "inverse_gauss_jordan"
 ]
 
 def vector(x) -> np.array:
@@ -143,27 +145,39 @@ def plane_normal(a,b,c) -> np.ndarray:
 
 
 def row_echelon(M) -> np.ndarray:
-    q = np.array(M, dtype=float)
+    q = np.array(M, dtype=float, copy=True)
 
+    if q.ndim != 2:
+        raise ValueError("2차원 행렬이어야 합니다.")
+
+    m, n = q.shape
     pivots = []
     swaps = 0
-    for i in range(3):
-        if q[i,i] == 0:
-            for r in range(i + 1, 3):
-                if q[r,i] !=0:
-                    q[[i,r]] = q[[r,i]]
-                    swaps += 1
-                    break
+    row = 0
 
-        if q[i,i] == 0:
+    for col in range(n):
+        if row >= m:
+            break
+
+        pivot_row = row + np.argmax(np.abs(q[row:, col]))
+
+        if abs(q[pivot_row, col]) <= 1e-8:
             continue
+
+        # 행 교환
+        if pivot_row != row:
+            q[[row, pivot_row]] = q[[pivot_row,row]]
+            swaps += 1
+
+        pivots.append(col)
         
-        pivots.append(i)
-        
-        for row in range(i + 1, 3):
-            if q[row, i] != 0:
-                k = q[row, i] / q[i,i]
-                q[row] = q[row] - k * q[i]
+        # 피벗 아래 소거
+        for r in range(row + 1, m):
+            factor = q[r, col] / q[row, col]
+            q[r] -= factor * q[row]
+            q[r,col] = 0.0
+
+        row += 1
     
     return q, pivots, swaps
 
@@ -180,6 +194,114 @@ def det(M):
     return ((-1)**swaps) * result
     
 
+def inverse_gauss_jordan(A):
+    A = np.array(A, dtype=float, copy=True)
+
+    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+        raise ValueError("정방행렬만 역행렬을 구할 수 있습니다.")
+
+    n = A.shape[0]
+    # [A | I] 형태의 확장행렬 만들기
+    augmented = np.hstack([A, np.eye(n)])
+
+    for col in range(n):
+        #
+        pivot_row = col + np.argmax(np.abs(augmented[col:, col]))
+
+        if augmented[pivot_row, col] == 0:
+            raise ValueError("행렬이 특이하여 역행렬을 구할 수 없습니다.")
+        
+        #피벗 행을 현재 행으로 이동
+        augmented[[col, pivot_row]] = augmented[[pivot_row, col]]
+
+        #피벗 행 전체를 나눠서 피벗을 1로 만들기
+
+        pivot = augmented[col, col]
+        augmented[col] /= pivot
+
+        for row in range(n):
+
+            if row == col:
+                continue
+
+            factor = augmented[row, col] / augmented[col, col]
+            augmented[row] -= factor * augmented[col]   
+
+    # [I | A^-1]에서 오른쪽 절반 반환
+    return augmented[:, n:]
+
+
+def gauss_eliminate(A, b, pivoting: bool = True, verbose: bool = False):
+    """가우스 소거법 + 후진대입으로 Ax = b 를 푼다.
+
+    Parameters
+    ----------
+    pivoting : True 면 부분 피벗팅을 적용한다. False 면 피벗을 그대로 쓴다
+               (문제 4-4 에서 두 경우의 오차를 비교하므로 **둘 다 동작해야 한다**).
+    verbose  : True 면 각 소거 단계의 첨가행렬 [A|b] 를 출력한다
+               (문제 4-1 이 요구하는 '단계별 출력').
+
+    Returns
+    -------
+    x : 해 벡터
+    steps : 단계별 첨가행렬 [A|b] 스냅샷 리스트 (초기 상태 포함)
+
+    피벗이 0 이면 해가 유일하지 않다 -> ZeroDivisionError.
+    """
+    # TODO: 문제 4-1
+    A = np.array(A, dtype=float, copy=True)
+    b = np.array(b, dtype=float, copy=True)
+
+    if A.ndim !=2 or A.shape[0] != A.shape[1]:
+        raise ValueError("A는 정사각행렬이어야 합니다.")
+
+    n = A.shape[0]
+
+    if b.shape != (n,):
+        raise ValueError("b는 A의 행 개수와 같은 길이의 벡터여야 합니다.")
+
+    augmented = np.column_stack([A, b])
+    steps = [augmented.copy()]
+
+    if verbose:
+        print("초기 첨가행렬:")
+        print(augmented)
+    
+    for col in range (n):
+        if pivoting:
+            pivot_row = col + np.argmax(np.abs(augmented[col:, col]))
+
+            if pivot_row != col:
+                augmented[[col, pivot_row]] = augmented [[pivot_row, col]]
+
+                steps.append(augmented.copy())
+
+                if verbose:
+                    print(f"{col}번 행과 {pivot_row}번 행 교환:")
+                    print(augmented)
+
+        if augmented[col, col] == 0:
+            raise ValueError(
+                "현재 피벗이 0이므로 소거를 진행할 수 없습니다."
+            )
+
+        for row in range(col + 1, n):
+            factor = augmented[row, col] / augmented[col, col]
+            augmented[row] -= factor * augmented[col]
+
+            steps.append(augmented.copy())
+
+            if verbose:
+                print(f"{col}번 피벗으로 {row}번 행 소거:")
+                print(augmented)
+
+    x = np.zeros(n)
+
+    for row in range(n-1, -1, -1):
+        known = augmented[row, row + 1:n] @ x[row + 1:]
+        x[row] = (augmented[row, n] - known) / augmented[row, row]
+
+    return x, steps
 
 
 

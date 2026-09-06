@@ -47,12 +47,23 @@ class CoordinateChain:
     
     def _path_to_root(self, frame: str) -> list[str]:
         """frame 에서 root 까지의 경로 [frame, ..., root] 를 만든다.
-
         root 에 연결되어 있지 않으면 KeyError.
         """
         # TODO: 문제 6-1
-        # raise NotImplementedError("_path_to_froot 를 구현하세요")
-        pass
+        path = [frame]
+
+        while frame != self.root:
+            if frame not in self._parent:
+                raise KeyError(f"{frame}이 루트 {self.root}에 연결되어 있지 않습니다.")
+                
+            frame = self._parent[frame]
+
+            if frame in path:
+                raise KeyError("부모 관계가 순환하여 루트에 도달할 수 없습니다.")
+
+            path.append(frame)
+
+        return path
 
 
     def T_from_root(self, frame: str) -> np.ndarray:
@@ -63,9 +74,16 @@ class CoordinateChain:
             T(base<-camera) = T(base<-link) @ T(link<-camera)
         """
         # TODO: 문제 6-1
-        # raise NotImplementedError("T_from_root 를 구현하세요")
-        pass    
+        path = self._path_to_root(frame)
 
+        result = np.eye(4)
+
+        for i in range(len(path)-1):
+            child = path[i]
+            parent = path[i + 1]
+            result = self.get(parent, child) @ result
+
+        return result
 
     def T(self, target: str, source: str) -> np.ndarray:
         """source 좌표를 target 좌표로 바꾸는 변환 T(target <- source).
@@ -73,8 +91,11 @@ class CoordinateChain:
         힌트: T(target<-source) = inv(T(root<-target)) @ T(root<-source)
         """
         # TODO: 문제 6-1
-        # raise NotImplementedError("T 를 구현하세요")
-        pass
+        T_root_target = self.T_from_root(target)
+        T_root_source = self.T_from_root(source)
+
+        inv_T(T_root_target)
+        return inv_T(T_root_target) @ T_root_source
 
 
     def transform(self, target: str, source: str, P, w: float = 1.0) -> np.ndarray:
@@ -83,15 +104,38 @@ class CoordinateChain:
         (3,) 와 (N,3) 을 모두 지원해야 하고, **반복문을 쓰지 않는다**.
         """
         # TODO: 문제 6-2
-        # raise NotImplementedError("transform 을 구현하세요")
-        pass
+        P = np.asarray(P, dtype= float)
+
+        if P.ndim == 1:
+            if P.shape != (3,):
+                raise ValueError("점 하나는 shape (3,)이어야 합니다.")
+        elif P.ndim == 2:
+            if P.shape[1] != 3:
+                raise ValueError("여러 점은 shape (N, 3)이어야 합니다.")
+        else:
+            raise ValueError("입력은 shape (3,) 또는 (N,3)이어야 합니다.")
+
+        single_point = P.ndim == 1
+
+        points = np.atleast_2d(P)
+
+        T_matrix = self.T(target, source)
+        result = transform_points(T_matrix, points, w=w)
+
+        if single_point:
+            return result[0]
+
+        return result
 
 
     def axis_angle(self, target: str, source: str):
         """T(target <- source) 의 회전 부분에서 회전축과 회전각을 복원한다."""
         # TODO: 문제 6-4
-        # raise NotImplementedError("axis_angle 을 구현하세요")
-        pass
+        T_matrix = self.T(target, source)
+
+        R = T_matrix[:3, :3]
+
+        return axis_angle_from_matrix(R)
 
 
 def default_chain() -> CoordinateChain:
@@ -107,8 +151,23 @@ def default_chain() -> CoordinateChain:
     #   T_base_link   = make_T(rot_z(...), [...])
     #   T_link_camera = make_T(rot_y(...) @ rot_x(...), [...])
     #   return CoordinateChain("base").add(...).add(...)
-    # raise NotImplementedError("default_chain 을 구현하세요")
-    pass
+    R_base_link = rot_z(np.deg2rad(30))
+    T_base_link = make_T(
+        R_base_link,
+        [0.30, 0.00, 0.40],
+    )
+    
+    R_link_camera = (
+        rot_y(np.deg2rad(-20)) @ rot_x(np.deg2rad(90))
+    )
+
+    T_link_camera = make_T(R_link_camera, [0.10, 0.05, 0.15])
+
+    chain = CoordinateChain("base")
+    chain.add("base", "link", T_base_link)
+    chain.add("link", "camera", T_link_camera)
+
+    return chain
 
 
 def camera_point_to_base(p_cam, chain: CoordinateChain | None = None) -> np.ndarray:
@@ -117,12 +176,17 @@ def camera_point_to_base(p_cam, chain: CoordinateChain | None = None) -> np.ndar
     chain 이 None 이면 default_chain() 을 쓴다.
     """
     # TODO: 문제 6-1
-    # raise NotImplementedError("camera_point_to_base 를 구현하세요")
-    pass
+    if chain is None:
+        chain = default_chain()
+
+    return chain.transform("base", "camera", p_cam)
 
 
 def base_point_to_camera(p_base, chain: CoordinateChain | None = None) -> np.ndarray:
     """base 기준 좌표 -> 카메라 기준 좌표. 왕복 검증(문제 6-2)에 쓴다."""
     # TODO: 문제 6-2
-    # raise NotImplementedError("base_point_to_camera 를 구현하세요")
-    pass
+    if chain is None:
+        chain = default_chain()
+
+    return chain.transform("camera", "base", p_base)
+

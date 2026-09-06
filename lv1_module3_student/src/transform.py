@@ -130,8 +130,16 @@ def transform_points(T, P, w:float = 1.0) -> np.ndarray:
 
 def least_squares_normal_equation(A, b):
     """정규방정식 (A^T A) x = A^T b 를 직접 세워 최소장승해를 구한다."""
-    return np.linalg.solve(A.T @ A, A.T @ b)
+    A = np.asarray(A, dtype=float)
+    b = np.asarray(b, dtype=float)
+
+    x = np.linalg.solve(A.T @ A, A.T @ b)
+    residual = b - A @ x
+
+    return x, residual
 
 
-def rmse():
-    pass
+def rmse(residual):
+    residual = np.asarray(residual, dtype=float)
+    return float(np.sqrt(np.mean(residual ** 2)))
+
